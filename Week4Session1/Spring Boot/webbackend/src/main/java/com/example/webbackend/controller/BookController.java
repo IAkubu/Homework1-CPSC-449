@@ -4,6 +4,7 @@ import com.example.webbackend.entity.Book;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -115,5 +116,117 @@ public class BookController {
 
     }
 
+    @PutMapping("/books/{id}")
+    public Book updateBook(@PathVariable Long id, @RequestBody Book updated) {
+        Book existing = findById(id);
+        if (existing == null) return null;
+
+        existing.setTitle(updated.getTitle());
+        existing.setAuthor(updated.getAuthor());
+        existing.setPrice(updated.getPrice());
+        return existing;
+    }
+
+    // PATCH: partial update
+    @PatchMapping("/books/{id}")
+    public Book patchBook(@PathVariable Long id, @RequestBody Book patch) {
+        Book existing = findById(id);
+        if (existing == null) return null;
+
+        if (patch.getTitle() != null) existing.setTitle(patch.getTitle());
+        if (patch.getAuthor() != null) existing.setAuthor(patch.getAuthor());
+        if (patch.getPrice() != null) existing.setPrice(patch.getPrice());
+
+        return existing;
+    }
+
+    // DELETE: remove book
+    @DeleteMapping("/books/{id}")
+    public List<Book> deleteBook(@PathVariable Long id) {
+        Book existing = findById(id);
+        if (existing == null) return books;
+
+        books.remove(existing);
+        return books;
+    }
+
+    // GET with pagination
+    // Example: /api/books/paged?page=0&size=5
+    @GetMapping("/books/paged")
+    public List<Book> getBooksPaged(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size
+    ) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= books.size()) return Collections.emptyList();
+
+        int toIndex = Math.min(fromIndex + safeSize, books.size());
+        return books.subList(fromIndex, toIndex);
+    }
+
+    // Advanced GET: filtering + sorting + pagination combined (FILTER -> SORT -> PAGINATE)
+    // Example:
+    // /api/books/advanced?title=java&minPrice=30&sortBy=author&order=asc&page=0&size=3
+    @GetMapping("/books/advanced")
+    public List<Book> getBooksAdvanced(
+            @RequestParam(required = false, defaultValue = "") String title,
+            @RequestParam(required = false, defaultValue = "") String author,
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false, defaultValue = "title") String sortBy,
+            @RequestParam(required = false, defaultValue = "asc") String order,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size
+    ) {
+        // 1) FILTER
+        List<Book> filtered = books.stream()
+                .filter(b -> title.isEmpty() || b.getTitle().toLowerCase().contains(title.toLowerCase()))
+                .filter(b -> author.isEmpty() || b.getAuthor().toLowerCase().contains(author.toLowerCase()))
+                .filter(b -> minPrice == null || b.getPrice() >= minPrice)
+                .filter(b -> maxPrice == null || b.getPrice() <= maxPrice)
+                .collect(Collectors.toList());
+
+        // 2) SORT
+        Comparator<Book> comparator;
+        switch (sortBy.toLowerCase()) {
+            case "author":
+                comparator = Comparator.comparing(Book::getAuthor);
+                break;
+            case "price":
+                comparator = Comparator.comparing(Book::getPrice);
+                break;
+            case "title":
+            default:
+                comparator = Comparator.comparing(Book::getTitle);
+                break;
+        }
+
+        if ("desc".equalsIgnoreCase(order)) comparator = comparator.reversed();
+
+        filtered = filtered.stream()
+                .sorted(comparator)
+                .collect(Collectors.toList());
+
+        // 3) PAGINATE
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= filtered.size()) return Collections.emptyList();
+
+        int toIndex = Math.min(fromIndex + safeSize, filtered.size());
+        return filtered.subList(fromIndex, toIndex);
+    }
+
+    // helper
+    private Book findById(Long id) {
+        return books.stream()
+                .filter(b -> b.getId() != null && b.getId().equals(id))
+                .findFirst()
+                .orElse(null);
+    }
 
 }
